@@ -16,7 +16,7 @@ Run:           python tally_suite.py            (window)
 IMPORTANT: this is a drafting and review aid. Every legal rule carries a source and a
 "verified" date; anything unverified is flagged. The CA reviews and signs - not the software.
 """
-APP_VERSION = "1.1.1"
+APP_VERSION = "1.2.0"
 
 import os, re, sys, io, json, copy, base64, hashlib, shutil, socket, threading, traceback
 import subprocess, tempfile, urllib.request, urllib.error, xml.etree.ElementTree as ET
@@ -456,6 +456,14 @@ class Tally:
             out.append(dict(name=(l.get("NAME") or l.findtext("NAME", "")).strip(),
                             group=(l.findtext("PARENT") or "").strip(),
                             open=-num(l.findtext("OPENINGBALANCE")), bal=-num(l.findtext("CLOSINGBALANCE"))))
+        return out
+
+    def voucher_dates(self, company, period=None):
+        """Light, fast query (dates only) - used to find which financial years really contain data."""
+        r = self.collection("Voucher", "Date", company, period); out = []
+        for v in r.iter("VOUCHER"):
+            try: out.append(pdate((v.findtext("DATE") or "").strip()))
+            except Exception: pass
         return out
 
     def vouchers(self, company, period=None):
@@ -2153,6 +2161,7 @@ def run_tests():
         pled = ty.ledgers(pname)
         T("tally.ledgers", len(led) > 20 and abs(sum(l["bal"] for l in led)) < 1, f"{len(led)} sum={sum(l['bal'] for l in led):.2f}")
         T("tally.vouchers", len(vch) > 50, str(len(vch)))
+        vd = ty.voucher_dates(cname); T("tally.voucher_dates", len(vd) >= 5 and all(isinstance(x, date) for x in vd), str(len(vd)))
         prof = dict(entity="company", name="Mascot Techcrib Private Limited", cin="U72900KL2021PTC000000", audit_firm="Raghunath & Iyer", frn="000000S",
                     partner="A B", mem_no="123456", udin="25123456ABCDEF1234", place="Kochi", report_date="30.08.2025", fs_date="30.08.2025",
                     directors=["Antonty George Pattara", "Cyriac Njavally"], facts={"audit_trail": "operated", "going_concern_mode": "mu"})
@@ -3921,6 +3930,7 @@ class SystemTheme:
             st.configure(w, background="#1b1f6b", troughcolor=P["bg"], arrowcolor=P["ac2"], bordercolor=P["line"], lightcolor="#1b1f6b", darkcolor="#1b1f6b")
             st.map(w, background=[("active", "#2b35a8")])
         st.configure("TSeparator", background=P["line"])
+        st.configure("Horizontal.TProgressbar", background=P["ac2"], troughcolor=P["field"], bordercolor=P["line"], lightcolor=P["ac2"], darkcolor=P["ac"])
 
     def restyle(self, w):
         """Recolour the plain-tk widgets (Text, Label, Frame, Listbox) that ttk styles cannot reach."""
@@ -4249,10 +4259,13 @@ def launch_gui():
             ttk.Button(a, text="Connect", command=self.connect).pack(side="left", padx=6)
             self.cbo = ttk.Combobox(a, width=60, state="readonly"); self.cbo.pack(side="left", padx=4); self.cbo.bind("<<ComboboxSelected>>", self.pick_company)
             ttk.Button(a, text="Load company data", command=self.load_tally).pack(side="left", padx=6)
+            self.pb = ttk.Progressbar(a, mode="indeterminate", length=120); self.pb.pack(side="left", padx=6)
             b = ttk.LabelFrame(f, text="B. From an Excel / CSV trial balance (Ledger | Group | Debit | Credit  or  Ledger | Group | Closing)"); b.pack(fill="x", padx=8, pady=6)
             ttk.Button(b, text="Import trial balance...", command=self.load_tb).pack(side="left", padx=6)
             ttk.Button(b, text="Import LAST YEAR's trial balance (comparatives)...", command=self.load_prior_tb).pack(side="left", padx=6)
-            c = ttk.LabelFrame(f, text="Financial year"); c.pack(fill="x", padx=8, pady=6)
+            c = ttk.LabelFrame(f, text="Financial year  (detected automatically from the data - change it if needed)"); c.pack(fill="x", padx=8, pady=6)
+            self.fy_opts = []; self.fycb = ttk.Combobox(c, width=40, state="readonly"); self.fycb.pack(side="left", padx=4); self.fycb.bind("<<ComboboxSelected>>", self.pick_fy)
+            ttk.Button(c, text="Detect years", command=self.probe_years).pack(side="left", padx=4)
             self.fs = tk.StringVar(); self.fe = tk.StringVar()
             for lab, v in (("From (dd-mm-yyyy)", self.fs), ("To (dd-mm-yyyy)", self.fe)): ttk.Label(c, text=lab).pack(side="left", padx=4); ttk.Entry(c, textvariable=v, width=12).pack(side="left")
             ttk.Button(c, text="BUILD statements + run all checks", command=self.build).pack(side="left", padx=14)
@@ -4276,16 +4289,50 @@ def launch_gui():
                 if c["name"] == self.cbo.get():
                     try: self.fs.set(pdate(c["start"]).strftime("%d-%m-%Y")); self.fe.set(pdate(c["end"]).strftime("%d-%m-%Y"))
                     except Exception: pass
+            self.probe_years()
+        def pick_fy(self, *_):
+            i = self.fycb.current()
+            if 0 <= i < len(self.fy_opts): self.fs.set(self.fy_opts[i][1].strftime("%d-%m-%Y")); self.fe.set(self.fy_opts[i][2].strftime("%d-%m-%Y"))
+        def probe_years(self, *_):
+            nm = self.cbo.get()
+            if not nm or not getattr(self, "tally", None): return
+            c = next((c for c in self.companies if c["name"] == nm), None)
+            try: per = (pdate(c["start"]), pdate(c["end"]))
+            except Exception: per = None
+            self.status.set("Scanning Tally to find which years contain data...")
+            def work():
+                try: return self.tally.voucher_dates(nm, per)
+                except Exception as e: LOG.add("ERROR", "tally.years", f"{e}", traceback.format_exc()); return None
+            def done(ds):
+                if not ds: self.status.set("Years could not be detected automatically - type the From and To dates yourself."); return
+                by = {}
+                for d in ds: by.setdefault(d.year if d.month >= 4 else d.year - 1, []).append(d)
+                today = date.today(); self.fy_opts = []
+                for y in sorted(by):
+                    s_, e_ = date(y, 4, 1), date(y + 1, 3, 31); n = len(by[y])
+                    self.fy_opts.append((f"FY {y}-{str(y + 1)[2:]}   -   {n:,} vouchers" + ("   (still running)" if e_ >= today else ""), s_, e_))
+                self.fycb["values"] = [o[0] for o in self.fy_opts]; closed = [i for i, o in enumerate(self.fy_opts) if o[2] < today]
+                k = closed[-1] if closed else len(self.fy_opts) - 1; self.fycb.current(k); self.pick_fy()
+                self.status.set(f"Found data in {len(self.fy_opts)} year(s). Selected {self.fy_opts[k][0].split('   -')[0]} (latest completed year) - pick another in the year box if you need it, then press Load company data.")
+            self.thread(work, done)
         def load_tally(self):
             nm = self.cbo.get()
             if not nm: return messagebox.showinfo("Select", "Connect and choose a company first.")
             try: per = (pdate(self.fs.get()), pdate(self.fe.get()))
             except Exception: return messagebox.showerror("Financial year", "Type the financial year dates first (dd-mm-yyyy), e.g. 01-04-2024 and 31-03-2025. The app reads Tally for exactly that year.")
-            self.status.set(f"Reading ledgers, groups and vouchers from Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y} - a big company can take a few minutes, please wait...")
+            prog = dict(step="1 of 3: ledger balances (the slow part)", t0=time.time(), run=True); self.pb.start(12)
+            def tick():
+                if not prog["run"]: return
+                el = int(time.time() - prog["t0"])
+                self.status.set(f"Reading Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y}  -  step {prog['step']}  -  {el // 60:02d}:{el % 60:02d} elapsed. Tally is calculating, please keep it idle.")
+                self.after(1000, tick)
+            tick()
             def work():
-                try: return self.tally.ledgers(nm, per), self.tally.groups(nm), self.tally.vouchers(nm, per)
+                try:
+                    L = self.tally.ledgers(nm, per); prog["step"] = "2 of 3: groups"; G = self.tally.groups(nm); prog["step"] = "3 of 3: vouchers"; V = self.tally.vouchers(nm, per); return L, G, V
                 except Exception as e: LOG.add("ERROR", "tally.load", f"{e}", traceback.format_exc()); return None
             def done(r):
+                prog["run"] = False; self.pb.stop()
                 if not r: self.status.set("Load failed - see Errors tab."); return
                 self.led, self.grp, self.vch = r; self.company = nm; self.prior = None; self.prior_source = None; self.tally_period = per
                 self.status.set(f"{nm}: {len(self.led)} ledgers, {len(self.vch)} voucher lines loaded."); self.load_profile(nm)
