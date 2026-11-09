@@ -16,7 +16,7 @@ Run:           python tally_suite.py            (window)
 IMPORTANT: this is a drafting and review aid. Every legal rule carries a source and a
 "verified" date; anything unverified is flagged. The CA reviews and signs - not the software.
 """
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 import os, re, sys, io, json, copy, base64, hashlib, shutil, socket, threading, traceback
 import subprocess, tempfile, urllib.request, urllib.error, xml.etree.ElementTree as ET
@@ -426,8 +426,9 @@ class Tally:
         txt = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", txt)
         return ET.fromstring(txt)
 
-    def collection(self, ctype, fetch, company=None):
+    def collection(self, ctype, fetch, company=None, period=None):
         cmp_ = f"<SVCURRENTCOMPANY>{company}</SVCURRENTCOMPANY>" if company else ""
+        if period: cmp_ += f"<SVFROMDATE>{period[0]:%Y%m%d}</SVFROMDATE><SVTODATE>{period[1]:%Y%m%d}</SVTODATE>"      # balances + vouchers for THIS year only
         xml = f"""<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Export</TALLYREQUEST>
 <TYPE>Collection</TYPE><ID>CAC</ID></HEADER><BODY><DESC><STATICVARIABLES>
 <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>{cmp_}</STATICVARIABLES>
@@ -448,8 +449,8 @@ class Tally:
         r = self.collection("Group", "Name,Parent", company)
         return {(g.get("NAME") or g.findtext("NAME") or "").strip(): (g.findtext("PARENT") or "").strip() for g in r.iter("GROUP")}
 
-    def ledgers(self, company):
-        r = self.collection("Ledger", "Name,Parent,OpeningBalance,ClosingBalance", company)
+    def ledgers(self, company, period=None):
+        r = self.collection("Ledger", "Name,Parent,OpeningBalance,ClosingBalance", company, period)
         out = []
         for l in r.iter("LEDGER"):
             out.append(dict(name=(l.get("NAME") or l.findtext("NAME", "")).strip(),
@@ -457,10 +458,10 @@ class Tally:
                             open=-num(l.findtext("OPENINGBALANCE")), bal=-num(l.findtext("CLOSINGBALANCE"))))
         return out
 
-    def vouchers(self, company):
+    def vouchers(self, company, period=None):
         r = self.collection("Voucher",
             "Date,VoucherTypeName,VoucherNumber,PartyLedgerName,Narration,"
-            "AllLedgerEntries.LedgerName,AllLedgerEntries.Amount,LedgerEntries.LedgerName,LedgerEntries.Amount", company)
+            "AllLedgerEntries.LedgerName,AllLedgerEntries.Amount,LedgerEntries.LedgerName,LedgerEntries.Amount", company, period)
         rows = []
         for v in r.iter("VOUCHER"):
             ds = (v.findtext("DATE") or "").strip()
@@ -4002,7 +4003,7 @@ class SystemTheme:
         cv.create_rectangle(x1, y, x2, y + 12, outline=P["ac2"], fill=P["field"], tags="hud"); fw = int((x2 - x1 - 2) * (xp % 100) / 100)
         if fw > 0: cv.create_rectangle(x1 + 1, y + 1, x1 + 1 + fw, y + 11, outline="", fill=mixc("#3b2bff", P["ac2"], .7), tags="hud")
         self.xpbar = (x1 + 1, x1 + 1 + max(fw, 0), y + 1); self.shine = cv.create_rectangle(x1, y + 1, x1 + 8, y + 11, outline="", fill="#ffffff", state="hidden", tags="hud")
-        s = self.app.settings; x = W - 24
+        s = self.app.settings; x = W - 138
         for tag, lab, on in (("tg_fx", "FX", s["fx_anim"]), ("tg_sfx", "SFX", s["fx_sfx"]), ("tg_music", "\u266a MUSIC", s["fx_music"])):
             t = cv.create_text(x, 18, anchor="e", text=f"[ {lab} {'ON' if on else 'OFF'} ]", font=("Consolas", 9, "bold"), fill=P["ac2"] if on else P["mut"], tags=("hud", tag))
             cv.tag_bind(tag, "<Button-1>", lambda e, t_=tag: self.toggle(t_)); cv.tag_bind(tag, "<Enter>", lambda e: cv.config(cursor="hand2")); cv.tag_bind(tag, "<Leave>", lambda e: cv.config(cursor=""))
@@ -4055,6 +4056,7 @@ class SystemTheme:
         m = fr % 180; cv.itemconfig(self.title, fill=("#8f8cc0" if m in (170, 174) else "#f0eeff"))     # the little 'System' flicker
         if fr % 25 == 0:
             co = getattr(app, "company", None) if getattr(app, "led", None) else None
+            co = (co[:38] + "...") if co and len(co) > 41 else co
             cv.itemconfig(self.player, text=f"PLAYER: {co}" if co else "PLAYER: awaiting data...")
     def stars_set(self, sid, v): self.cv.itemconfig(sid, fill=mixc(PAL["bg"], "#ffffff", 0.35 + 0.65 * (0.5 + 0.5 * math.sin(v))))
     def on_click_canvas(self, ev):
@@ -4277,13 +4279,15 @@ def launch_gui():
         def load_tally(self):
             nm = self.cbo.get()
             if not nm: return messagebox.showinfo("Select", "Connect and choose a company first.")
-            self.status.set("Reading ledgers, groups and vouchers from Tally...")
+            try: per = (pdate(self.fs.get()), pdate(self.fe.get()))
+            except Exception: return messagebox.showerror("Financial year", "Type the financial year dates first (dd-mm-yyyy), e.g. 01-04-2024 and 31-03-2025. The app reads Tally for exactly that year.")
+            self.status.set(f"Reading ledgers, groups and vouchers from Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y}...")
             def work():
-                try: return self.tally.ledgers(nm), self.tally.groups(nm), self.tally.vouchers(nm)
+                try: return self.tally.ledgers(nm, per), self.tally.groups(nm), self.tally.vouchers(nm, per)
                 except Exception as e: LOG.add("ERROR", "tally.load", f"{e}", traceback.format_exc()); return None
             def done(r):
                 if not r: self.status.set("Load failed - see Errors tab."); return
-                self.led, self.grp, self.vch = r; self.company = nm; self.prior = None; self.prior_source = None
+                self.led, self.grp, self.vch = r; self.company = nm; self.prior = None; self.prior_source = None; self.tally_period = per
                 self.status.set(f"{nm}: {len(self.led)} ledgers, {len(self.vch)} voucher lines loaded."); self.load_profile(nm)
             self.thread(work, done)
         def load_tb(self):
@@ -4291,7 +4295,7 @@ def launch_gui():
             if not p: return
             r = import_tb(p)
             if r is None: self.status.set("Import failed - see Errors tab."); return messagebox.showerror("Import failed", "Could not read the file. Details are in the Errors tab.")
-            self.led, self.grp, self.vch, self.prior, self.prior_source = r, {}, None, None, None; self.company = Path(p).stem; self.status.set(f"{len(r)} ledgers imported from {Path(p).name}."); self.load_profile(self.company)
+            self.led, self.grp, self.vch, self.prior, self.prior_source = r, {}, None, None, None; self.tally_period = None; self.company = Path(p).stem; self.status.set(f"{len(r)} ledgers imported from {Path(p).name}."); self.load_profile(self.company)
         def load_prior_tb(self):
             p = filedialog.askopenfilename(filetypes=[("Trial balance", "*.xlsx *.xlsm *.csv")])
             if not p: return
@@ -4304,7 +4308,10 @@ def launch_gui():
             if not self.led: return messagebox.showinfo("No data", "Load Tally data or import a trial balance first.")
             d = self.fy()
             if not d: return
-            s, e = d; prof = self.read_prof(); prior, src = self.prior, self.prior_source
+            s, e = d
+            if getattr(self, "tally_period", None) and self.tally_period != (s, e):
+                return messagebox.showwarning("Reload the data", f"The data was read from Tally for {self.tally_period[0]:%d-%m-%Y} to {self.tally_period[1]:%d-%m-%Y}, but the dates now say {s:%d-%m-%Y} to {e:%d-%m-%Y}.\nPress 'Load company data' again so the balances match the year.")
+            prof = self.read_prof(); prior, src = self.prior, self.prior_source
             if prior is None:
                 snap = load_snapshot(self.company, date(e.year - 1, e.month, e.day))
                 if snap: prior, src = snap["ledgers"], "snapshot"
