@@ -1,0 +1,181 @@
+{
+ "schema": 1,
+ "version": "2026.11.08",
+ "updated": "2026-11-08",
+ "rules": {
+  "small_company": {
+   "title": "Small company - Companies Act s.2(85) read with Rule 2(1)(t)",
+   "explain": "A private company (not holding/subsidiary, not s.8, not under a special Act) is 'small' if paid-up capital and turnover (preceding FY) are both within the limits. Small companies are exempt from CARO, cash flow statement, and get lighter AS/Sch III disclosure.",
+   "source": "MCA G.S.R. 880(E) dated 01-12-2025 (10cr / 100cr); G.S.R. 696(E) 15-09-2022 (4cr / 40cr); G.S.R. 92(E) 01-04-2021 (2cr / 20cr)",
+   "history": [
+    {
+     "from": "2014-04-01",
+     "verified": "",
+     "paid_up": 5000000,
+     "turnover": 20000000
+    },
+    {
+     "from": "2021-04-01",
+     "verified": "",
+     "paid_up": 20000000,
+     "turnover": 200000000
+    },
+    {
+     "from": "2022-09-15",
+     "verified": "",
+     "paid_up": 40000000,
+     "turnover": 400000000
+    },
+    {
+     "from": "2025-12-01",
+     "verified": "2026-11-08",
+     "paid_up": 100000000,
+     "turnover": 1000000000
+    }
+   ]
+  },
+  "caro_private_exempt": {
+   "title": "CARO - private company exemption (all three limits together)",
+   "explain": "A private company that is not a holding/subsidiary of a public company is outside CARO only if paid-up capital + reserves <= 1 cr at balance sheet date, bank/FI borrowings <= 1 cr at ANY time in the year, and total revenue (incl. other income) <= 10 cr.",
+   "source": "CARO 2020 para 1(2)(v); CARO 2016 para 1(2)",
+   "history": [
+    {
+     "from": "2015-04-01",
+     "verified": "",
+     "cap_reserves": 10000000,
+     "borrowings": 10000000,
+     "revenue": 100000000
+    },
+    {
+     "from": "2020-04-01",
+     "verified": "2026-11-08",
+     "cap_reserves": 10000000,
+     "borrowings": 10000000,
+     "revenue": 100000000
+    }
+   ]
+  },
+  "caro_regime": {
+   "title": "Which Companies (Auditor's Report) Order applies to the financial year",
+   "explain": "Selected by the financial year START date. CARO 2020 applies to financial years commencing on/after 1 April 2020 (the 2019-20 effective date was deferred), so FY 2019-20 is still reported under CARO 2016.",
+   "source": "MCA S.O. 849(E) 25-02-2020 and S.O. 1088(E) 24-03-2020 (deferral)",
+   "history": [
+    {
+     "from": "2003-01-01",
+     "verified": "",
+     "order": "CARO 2003"
+    },
+    {
+     "from": "2014-04-01",
+     "verified": "",
+     "order": "CARO 2015"
+    },
+    {
+     "from": "2015-04-01",
+     "verified": "",
+     "order": "CARO 2016"
+    },
+    {
+     "from": "2020-04-01",
+     "verified": "",
+     "order": "CARO 2020"
+    }
+   ]
+  },
+  "rule11_funds": {
+   "title": "Rule 11(e) - funds advanced / received through intermediaries",
+   "explain": "Management-representation reporting on intermediaries and funding parties. Applies to audit reports for FY starting on/after 1 April 2021.",
+   "source": "Companies (Audit and Auditors) Amendment Rules, 2021",
+   "history": [
+    {
+     "from": "2021-04-01",
+     "verified": "",
+     "on": true
+    }
+   ]
+  },
+  "rule11_dividend": {
+   "title": "Rule 11(f) - dividend declared or paid",
+   "explain": "Report whether dividend declared/paid complies with s.123. Applies from FY starting on/after 1 April 2021.",
+   "source": "Companies (Audit and Auditors) Amendment Rules, 2021",
+   "history": [
+    {
+     "from": "2021-04-01",
+     "verified": "",
+     "on": true
+    }
+   ]
+  },
+  "rule11_audit_trail": {
+   "title": "Rule 11(g) - accounting software with audit trail (edit log)",
+   "explain": "Mandatory from FY starting on/after 1 April 2023. From FY 2024-25 the report must also say the audit trail was preserved as per statutory record retention.",
+   "source": "Companies (Accounts) Second Amendment Rules 2021 / Rule 3(1) as amended 2022; Rule 11(g)",
+   "history": [
+    {
+     "from": "2023-04-01",
+     "verified": "",
+     "on": true,
+     "preserved": false
+    },
+    {
+     "from": "2024-04-01",
+     "verified": "",
+     "on": true,
+     "preserved": true
+    }
+   ]
+  },
+  "ifc_exempt": {
+   "title": "s.143(3)(i) - exemption from IFC-over-financial-reporting opinion",
+   "explain": "Private company is exempt if turnover < 50 cr in the previous year AND borrowings from banks/FIs < 25 cr at any time in the year (also exempt: OPC, small company).",
+   "source": "MCA notification 13-06-2017",
+   "history": [
+    {
+     "from": "2017-06-13",
+     "verified": "",
+     "turnover": 500000000,
+     "borrowings": 250000000
+    }
+   ]
+  },
+  "cash_flow_exempt": {
+   "title": "Cash flow statement - who is exempt",
+   "explain": "Financial statement as defined in s.2(40) does not include a cash flow statement for One Person Company, small company and dormant company.",
+   "source": "Companies Act 2013 s.2(40) proviso",
+   "history": [
+    {
+     "from": "2014-04-01",
+     "verified": "",
+     "on": true
+    }
+   ]
+  },
+  "cash_limits": {
+   "title": "Cash transaction limits used by the checkers",
+   "explain": "Rs 10,000 cash payment per day per person (s.40A(3) - disallowance; Rs 35,000 for transporters); Rs 20,000 cash loan/deposit/repayment (s.269SS/269T); Rs 2,00,000 cash receipt (s.269ST). The Income-tax Act 2025 carries corresponding provisions - section numbers may differ.",
+   "source": "Income-tax law - CA to confirm for the current year",
+   "history": [
+    {
+     "from": "2018-04-01",
+     "verified": "",
+     "pay": 10000,
+     "loan": 20000,
+     "receipt": 200000
+    }
+   ]
+  },
+  "going_concern": {
+   "title": "Going-concern indicators used by the checkers",
+   "explain": "Net worth negative or accumulated losses >= net worth, continuing losses with nil revenue, dependence on director loans. SA 570 requires evaluating management's plan; a material uncertainty needs a separate paragraph in the report.",
+   "source": "SA 570 (Revised)",
+   "history": [
+    {
+     "from": "2014-04-01",
+     "verified": "",
+     "min_ratio": 1.0
+    }
+   ]
+  }
+ },
+ "sha256": "346fcbb93e240619a96be713351654e09c6751c71df87623b884988d5c942a98"
+}

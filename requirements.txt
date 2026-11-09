@@ -1,0 +1,5 @@
+openpyxl
+reportlab
+python-docx
+pypdf
+pillow
