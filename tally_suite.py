@@ -16,7 +16,7 @@ Run:           python tally_suite.py            (window)
 IMPORTANT: this is a drafting and review aid. Every legal rule carries a source and a
 "verified" date; anything unverified is flagged. The CA reviews and signs - not the software.
 """
-APP_VERSION = "1.2.2"
+APP_VERSION = "1.2.3"
 
 import os, re, sys, io, json, copy, base64, hashlib, shutil, socket, threading, traceback
 import subprocess, tempfile, urllib.request, urllib.error, xml.etree.ElementTree as ET
@@ -4265,12 +4265,13 @@ def launch_gui():
             ttk.Button(b, text="Import trial balance...", command=self.load_tb).pack(side="left", padx=6)
             ttk.Button(b, text="Import LAST YEAR's trial balance (comparatives)...", command=self.load_prior_tb).pack(side="left", padx=6)
             c = ttk.LabelFrame(f, text="Financial year  (detected automatically from the data - change it if needed)"); c.pack(fill="x", padx=8, pady=6)
-            self.fy_opts = []; self.fycb = ttk.Combobox(c, width=40, state="readonly"); self.fycb.pack(side="left", padx=4); self.fycb.bind("<<ComboboxSelected>>", self.pick_fy)
-            ttk.Button(c, text="Detect years", command=self.probe_years).pack(side="left", padx=4)
-            self.exact = tk.BooleanVar(value=False); ttk.Checkbutton(c, text="Exact year balances (SLOW, uses lots of RAM)", variable=self.exact).pack(side="left", padx=8)
+            c1 = ttk.Frame(c); c1.pack(fill="x"); c2 = ttk.Frame(c); c2.pack(fill="x")          # row 1: year + dates + BUILD   |   row 2: the slow option
+            self.fy_opts = []; self.fycb = ttk.Combobox(c1, width=34, state="readonly"); self.fycb.pack(side="left", padx=4); self.fycb.bind("<<ComboboxSelected>>", self.pick_fy)
+            ttk.Button(c1, text="Detect years", command=self.probe_years).pack(side="left", padx=4)
+            self.exact = tk.BooleanVar(value=False); ttk.Checkbutton(c2, text="Exact year balances from Tally (SLOW, heavy on RAM - leave unticked)", variable=self.exact).pack(side="left", padx=8)
             self.fs = tk.StringVar(); self.fe = tk.StringVar()
-            for lab, v in (("From (dd-mm-yyyy)", self.fs), ("To (dd-mm-yyyy)", self.fe)): ttk.Label(c, text=lab).pack(side="left", padx=4); ttk.Entry(c, textvariable=v, width=12).pack(side="left")
-            ttk.Button(c, text="BUILD statements + run all checks", command=self.build).pack(side="left", padx=14)
+            for lab, v in (("From (dd-mm-yyyy)", self.fs), ("To (dd-mm-yyyy)", self.fe)): ttk.Label(c1, text=lab).pack(side="left", padx=4); ttk.Entry(c1, textvariable=v, width=12).pack(side="left")
+            ttk.Button(c1, text="BUILD statements + run all checks", command=self.build).pack(side="left", padx=14)
             self.info = tk.Text(f, height=16, wrap="word"); self.info.pack(fill="both", expand=True, padx=8, pady=6)
             self.info.insert("end", "Comparatives order of preference: imported last-year TB, then the snapshot this app saved last year, then Tally opening balances (balance sheet only).\n"
                                     "Every load saves a snapshot, so next year's comparatives are automatic.\n")
