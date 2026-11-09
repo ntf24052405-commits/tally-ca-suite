@@ -16,7 +16,7 @@ Run:           python tally_suite.py            (window)
 IMPORTANT: this is a drafting and review aid. Every legal rule carries a source and a
 "verified" date; anything unverified is flagged. The CA reviews and signs - not the software.
 """
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 import os, re, sys, io, json, copy, base64, hashlib, shutil, socket, threading, traceback
 import subprocess, tempfile, urllib.request, urllib.error, xml.etree.ElementTree as ET
@@ -419,7 +419,7 @@ class Tally:
 
     def _post(self, xml):
         req = urllib.request.Request(self.url, xml.encode("utf-8"), {"Content-Type": "text/xml"})
-        raw = urllib.request.urlopen(req, timeout=120).read()
+        raw = urllib.request.urlopen(req, timeout=1500).read()          # big companies: Tally recalculates every ledger for the year - can take several minutes
         try:    txt = raw.decode("utf-8")
         except UnicodeDecodeError: txt = raw.decode("utf-16")
         txt = re.sub(r"&#(?:[0-9]|1[0-9]|2[0-9]|3[01]);", "", txt)         # Tally junk characters
@@ -4281,7 +4281,7 @@ def launch_gui():
             if not nm: return messagebox.showinfo("Select", "Connect and choose a company first.")
             try: per = (pdate(self.fs.get()), pdate(self.fe.get()))
             except Exception: return messagebox.showerror("Financial year", "Type the financial year dates first (dd-mm-yyyy), e.g. 01-04-2024 and 31-03-2025. The app reads Tally for exactly that year.")
-            self.status.set(f"Reading ledgers, groups and vouchers from Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y}...")
+            self.status.set(f"Reading ledgers, groups and vouchers from Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y} - a big company can take a few minutes, please wait...")
             def work():
                 try: return self.tally.ledgers(nm, per), self.tally.groups(nm), self.tally.vouchers(nm, per)
                 except Exception as e: LOG.add("ERROR", "tally.load", f"{e}", traceback.format_exc()); return None
