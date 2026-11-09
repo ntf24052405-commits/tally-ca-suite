@@ -16,7 +16,7 @@ Run:           python tally_suite.py            (window)
 IMPORTANT: this is a drafting and review aid. Every legal rule carries a source and a
 "verified" date; anything unverified is flagged. The CA reviews and signs - not the software.
 """
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.2"
 
 import os, re, sys, io, json, copy, base64, hashlib, shutil, socket, threading, traceback
 import subprocess, tempfile, urllib.request, urllib.error, xml.etree.ElementTree as ET
@@ -4042,7 +4042,7 @@ class SystemTheme:
     @_fx_safe
     def step(self):
         app, cv = self.app, self.cv
-        if app.state() == "iconic": return
+        if app.state() == "iconic" or getattr(self, "paused", False): return
         self.frame += 1; fr = self.frame; W, H = self.W, self.H
         if fr % 2 == 0:
             for sid, ph, sp in self.stars: self.stars_set(sid, ph + fr * sp)
@@ -4069,6 +4069,7 @@ class SystemTheme:
             co = (co[:38] + "...") if co and len(co) > 41 else co
             cv.itemconfig(self.player, text=f"PLAYER: {co}" if co else "PLAYER: awaiting data...")
     def stars_set(self, sid, v): self.cv.itemconfig(sid, fill=mixc(PAL["bg"], "#ffffff", 0.35 + 0.65 * (0.5 + 0.5 * math.sin(v))))
+    def pause(self, on): self.paused = bool(on)
     def on_click_canvas(self, ev):
         if not self.anim_on: return
         o = self.cv.create_oval(ev.x - 6, ev.y - 6, ev.x + 6, ev.y + 6, outline=PAL["ac2"], width=2, tags="fx"); self.ripples.append([o, ev.x, ev.y, 0]); self.audio.sfx("click")
@@ -4266,6 +4267,7 @@ def launch_gui():
             c = ttk.LabelFrame(f, text="Financial year  (detected automatically from the data - change it if needed)"); c.pack(fill="x", padx=8, pady=6)
             self.fy_opts = []; self.fycb = ttk.Combobox(c, width=40, state="readonly"); self.fycb.pack(side="left", padx=4); self.fycb.bind("<<ComboboxSelected>>", self.pick_fy)
             ttk.Button(c, text="Detect years", command=self.probe_years).pack(side="left", padx=4)
+            self.exact = tk.BooleanVar(value=False); ttk.Checkbutton(c, text="Exact year balances (SLOW, uses lots of RAM)", variable=self.exact).pack(side="left", padx=8)
             self.fs = tk.StringVar(); self.fe = tk.StringVar()
             for lab, v in (("From (dd-mm-yyyy)", self.fs), ("To (dd-mm-yyyy)", self.fe)): ttk.Label(c, text=lab).pack(side="left", padx=4); ttk.Entry(c, textvariable=v, width=12).pack(side="left")
             ttk.Button(c, text="BUILD statements + run all checks", command=self.build).pack(side="left", padx=14)
@@ -4320,22 +4322,30 @@ def launch_gui():
             if not nm: return messagebox.showinfo("Select", "Connect and choose a company first.")
             try: per = (pdate(self.fs.get()), pdate(self.fe.get()))
             except Exception: return messagebox.showerror("Financial year", "Type the financial year dates first (dd-mm-yyyy), e.g. 01-04-2024 and 31-03-2025. The app reads Tally for exactly that year.")
-            prog = dict(step="1 of 3: ledger balances (the slow part)", t0=time.time(), run=True); self.pb.start(12)
+            if self.exact.get() and not messagebox.askyesno("Exact year - slow and heavy", "Asking Tally for exact-year balances makes it recalculate EVERY ledger.\nOn a big company this takes many minutes and can use all the RAM, so TallyPrime may stop responding.\n\nSave your work in Tally and close other programs first. Continue only if you really need it.\n\nContinue?"):
+                self.exact.set(False); return
+            fx = getattr(self, "fx", None)
+            if fx: fx.pause(True)                         # free the CPU/RAM for Tally while it answers: animation stops during the read
+            lper = per if self.exact.get() else None       # asking Tally for a custom period makes it recalculate every ledger = minutes. Default: Tally's own current period = seconds.
+            prog = dict(step="1 of 3: ledger balances" + (" (exact year - slow)" if lper else " (fast)"), t0=time.time(), run=True); self.pb.start(12)
             def tick():
                 if not prog["run"]: return
                 el = int(time.time() - prog["t0"])
-                self.status.set(f"Reading Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y}  -  step {prog['step']}  -  {el // 60:02d}:{el % 60:02d} elapsed. Tally is calculating, please keep it idle.")
+                self.status.set(f"Reading Tally for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y}  -  step {prog['step']}  -  {el // 60:02d}:{el % 60:02d} elapsed. Tally is calculating, please keep it idle." + ("  If Tally freezes: close this app, restart Tally, and use 'Import trial balance...' instead." if el > 180 else ""))
                 self.after(1000, tick)
             tick()
             def work():
                 try:
-                    L = self.tally.ledgers(nm, per); prog["step"] = "2 of 3: groups"; G = self.tally.groups(nm); prog["step"] = "3 of 3: vouchers"; V = self.tally.vouchers(nm, per); return L, G, V
+                    L = self.tally.ledgers(nm, lper); prog["step"] = "2 of 3: groups"; G = self.tally.groups(nm); prog["step"] = "3 of 3: vouchers"; V = self.tally.vouchers(nm, per); return L, G, V
                 except Exception as e: LOG.add("ERROR", "tally.load", f"{e}", traceback.format_exc()); return None
             def done(r):
                 prog["run"] = False; self.pb.stop()
+                if fx: fx.pause(False)
                 if not r: self.status.set("Load failed - see Errors tab."); return
                 self.led, self.grp, self.vch = r; self.company = nm; self.prior = None; self.prior_source = None; self.tally_period = per
-                self.status.set(f"{nm}: {len(self.led)} ledgers, {len(self.vch)} voucher lines loaded."); self.load_profile(nm)
+                self.status.set(f"{nm}: {len(self.led)} ledgers, {len(self.vch)} voucher lines loaded.")
+                if not lper: self.info.insert("end", f"\nFast read: vouchers are for {per[0]:%d-%m-%Y} to {per[1]:%d-%m-%Y}; ledger balances are as Tally shows them for its CURRENT period. If they must be exactly this year, set the period in Tally (Alt+F2) and reload, or tick 'Exact year balances' (slow).\n")
+                self.load_profile(nm)
             self.thread(work, done)
         def load_tb(self):
             p = filedialog.askopenfilename(filetypes=[("Trial balance", "*.xlsx *.xlsm *.csv")])
